@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>업무 지도</title>
+<style>
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #EBF0F4; color: #14283C; font-family: Pretendard, 'Malgun Gothic', sans-serif; }
+form { width: min(340px, calc(100vw - 32px)); padding: 26px 24px; background: #fff; border: 1px solid #DAE2E9; border-radius: 14px; box-sizing: border-box; }
+h1 { margin: 0 0 14px; font-size: 20px; font-weight: 800; }
+label { display: block; margin-bottom: 6px; font-size: 13.5px; color: #586878; }
+input, button { box-sizing: border-box; width: 100%; padding: 10px 12px; border-radius: 8px; font: inherit; }
+input { border: 1px solid #BCC8D3; }
+button { margin-top: 10px; border: 0; background: #14283C; color: #fff; cursor: pointer; }
+p { min-height: 1.4em; margin: 10px 0 0; font-size: 13.5px; color: #A6321E; }
+</style>
+</head>
+<body>
+<form id="gate">
+  <h1>업무 지도</h1>
+  <label for="pw">비밀번호</label>
+  <input id="pw" type="password" autocomplete="current-password" required autofocus>
+  <button>열기</button>
+  <p id="msg" role="status"></p>
+</form>
+<script>
+(() => { // 열린 지도의 변수와 겹치지 않게 전부 함수 안에 둔다
+  const KEY = 'workmap-pw', msg = document.getElementById('msg'), input = document.getElementById('pw');
+  const bytes = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  async function open_(pw, silent) {
+    msg.textContent = '여는 중입니다.';
+    let data;
+    try { // 주소 뒤에 시각을 붙여 항상 최신 파일을 받는다
+      const res = await fetch('data.json?t=' + Date.now(), {cache: 'no-store'});
+      if (!res.ok) throw 0;
+      data = await res.json();
+    } catch { msg.textContent = '파일을 불러오지 못했습니다. 잠시 후 새로고침해 주세요.'; return; }
+    let html;
+    try {
+      const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+      const key = await crypto.subtle.deriveKey({name: 'PBKDF2', salt: bytes(data.salt), iterations: data.iter, hash: 'SHA-256'}, base, {name: 'AES-GCM', length: 256}, false, ['decrypt']);
+      html = new TextDecoder().decode(await crypto.subtle.decrypt({name: 'AES-GCM', iv: bytes(data.iv)}, key, bytes(data.ct)));
+    } catch {
+      sessionStorage.removeItem(KEY);
+      msg.textContent = silent ? '비밀번호를 다시 입력해 주세요.' : '비밀번호가 맞지 않습니다.';
+      return;
+    }
+    sessionStorage.setItem(KEY, pw); // 같은 탭에서 새로고침할 때는 다시 묻지 않는다
+    document.open(); document.write(html); document.close();
+  }
+  document.getElementById('gate').addEventListener('submit', e => { e.preventDefault(); open_(input.value); });
+  const saved = sessionStorage.getItem(KEY);
+  if (saved) open_(saved, true);
+})();
+</script>
+</body>
+</html>
