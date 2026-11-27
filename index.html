@@ -39,7 +39,13 @@ p { min-height: 1.4em; margin: 10px 0 0; font-size: 13.5px; color: #A6321E; }
     let html;
     try {
       const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
-      const key = await crypto.subtle.deriveKey({name: 'PBKDF2', salt: bytes(data.salt), iterations: data.iter, hash: 'SHA-256'}, base, {name: 'AES-GCM', length: 256}, false, ['decrypt']);
+      let raw;
+      for (const k of data.keys) { // 등록된 비밀번호를 하나씩 대조한다
+        const wrap = await crypto.subtle.deriveKey({name: 'PBKDF2', salt: bytes(k.salt), iterations: data.iter, hash: 'SHA-256'}, base, {name: 'AES-GCM', length: 256}, false, ['decrypt']);
+        try { raw = await crypto.subtle.decrypt({name: 'AES-GCM', iv: bytes(k.iv)}, wrap, bytes(k.key)); break; } catch {}
+      }
+      if (!raw) throw 0;
+      const key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['decrypt']);
       html = new TextDecoder().decode(await crypto.subtle.decrypt({name: 'AES-GCM', iv: bytes(data.iv)}, key, bytes(data.ct)));
     } catch {
       sessionStorage.removeItem(KEY);
